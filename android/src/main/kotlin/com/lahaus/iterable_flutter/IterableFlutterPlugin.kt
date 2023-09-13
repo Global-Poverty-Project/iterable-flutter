@@ -7,7 +7,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.fragment.app.FragmentActivity
-import com.google.gson.Gson
 import com.iterable.iterableapi.*
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -427,6 +426,3 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
     // endregion
 }
-
-
-
