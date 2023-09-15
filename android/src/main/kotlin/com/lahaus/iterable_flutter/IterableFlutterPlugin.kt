@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import androidx.fragment.app.FragmentActivity
 import com.iterable.iterableapi.*
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -16,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry.NewIntentListener
+import org.json.JSONException
 import org.json.JSONObject
 import java.util.regex.Pattern
 
@@ -77,38 +79,46 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 }
                 result.success(null)
             }
+
             "setEmail" -> {
                 val userEmail = call.arguments as String
                 IterableApi.getInstance().setEmail(userEmail)
                 IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
+
             "setUserId" -> {
                 IterableApi.getInstance().setUserId(call.arguments as String)
                 IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
+
             "track" -> {
                 IterableApi.getInstance().track(call.arguments as String)
                 result.success(null)
             }
+
             "registerForPush" -> {
                 IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
+
             "signOut" -> {
                 IterableApi.getInstance().disablePush()
                 result.success(null)
             }
+
             "checkRecentNotification" -> {
                 notifyPushNotificationOpened()
                 result.success(null)
             }
+
             "updateUser" -> {
                 val userInfo = call.argument<Map<String, Any>?>("params")
                 IterableApi.getInstance().updateUser(JSONObject(userInfo))
                 result.success(null)
             }
+
             "showMobileInbox" -> {
                 val screenTitle = call.argument<String>("screenTitle")
                 val noMessagesTitle = call.argument<String>("noMessagesTitle")
@@ -123,9 +133,37 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 }
                 result.success(null)
             }
+
             "getUnreadInboxMessagesCount" -> {
                 result.success(IterableApi.getInstance().inAppManager.unreadInboxMessagesCount)
             }
+
+            "getInboxMessages" -> {
+                val messages = IterableApi.getInstance().inAppManager.inboxMessages
+                val messagesJson = messages.map {it.toMessagePreviewJsonObject().toString() }
+                result.success(messagesJson)
+            }
+
+            "showInboxMessage" -> {
+                // Mandatory "messageId" parameter
+                val messageId = call.argument<String>("messageId")
+                // Find message from inbox
+                val message = IterableApi.getInstance().inAppManager.inboxMessages.firstOrNull {
+                    it.messageId == messageId
+                }
+                // Show message
+                message?.let {
+                    IterableApi.getInstance().inAppManager.showMessage(
+                        message,
+                        false,
+                        { _ -> result.success(true)},
+                        IterableInAppLocation.IN_APP,
+                    )
+                } ?: run {
+                    result.success(false)
+                }
+            }
+
             else -> {
                 result.notImplemented()
             }
@@ -176,6 +214,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                     "push"
                 }
             }
+
             IterableActionSource.APP_LINK -> "appLink"
             IterableActionSource.IN_APP -> "inApp"
         }
@@ -324,5 +363,61 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
         }
     }
     // endregion
+    // endregion
+
+    // region InAppMessage
+
+    fun IterableInAppMessage.InboxMetadata.toJsonObject(): JSONObject {
+        val inboxMetadataJson = JSONObject()
+
+        try {
+            inboxMetadataJson.putOpt(IterableConstants.ITERABLE_IN_APP_INBOX_TITLE, this.title)
+            inboxMetadataJson.putOpt(
+                IterableConstants.ITERABLE_IN_APP_INBOX_SUBTITLE,
+                this.subtitle
+            )
+            inboxMetadataJson.putOpt(IterableConstants.ITERABLE_IN_APP_INBOX_ICON, this.icon)
+        } catch (e: JSONException) {
+            IterableLogger.e("Error while serializing inbox metadata", e.toString())
+        }
+        return inboxMetadataJson;
+    }
+
+    fun IterableInAppMessage.toMessagePreviewJsonObject(): JSONObject {
+
+        val messageJson = JSONObject()
+
+        try {
+            messageJson.putOpt(IterableConstants.KEY_MESSAGE_ID, messageId)
+
+            if (createdAt != null) {
+                messageJson.putOpt(
+                    IterableConstants.ITERABLE_IN_APP_CREATED_AT,
+                    createdAt.time
+                )
+            }
+            if (expiresAt != null) {
+                messageJson.putOpt(
+                    IterableConstants.ITERABLE_IN_APP_EXPIRES_AT,
+                    expiresAt.time
+                )
+            }
+
+            if (inboxMetadata != null) {
+                messageJson.putOpt(
+                    IterableConstants.ITERABLE_IN_APP_INBOX_METADATA,
+                    inboxMetadata!!.toJsonObject()
+                )
+            }
+
+            messageJson.putOpt(IterableConstants.ITERABLE_IN_APP_READ, this.isRead);
+
+        } catch (e: JSONException) {
+
+            IterableLogger.e("Error while serializing an in-app message", e.toString())
+        }
+        return messageJson
+    }
+
     // endregion
 }

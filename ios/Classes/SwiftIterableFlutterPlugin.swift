@@ -86,10 +86,35 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             result(nil)
         case "getUnreadInboxMessagesCount":
             result(IterableAPI.inAppManager.getUnreadInboxMessagesCount())
+        case "getInboxMessages":
+ 
+            let messages = IterableAPI.inAppManager.getInboxMessages()
+            let jsonEncoder = JSONEncoder()
+            jsonEncoder.dateEncodingStrategy = .millisecondsSince1970
+            let messagesJson = messages.map { try? jsonEncoder.encode($0) }
+            let messagesString : [String] = messagesJson.map { message in
+                return message != nil ?  String(data: message! , encoding: .utf8) ?? "" : ""
+            }
+            result(messagesString)
+        case "showInboxMessage":
+            
+            // Mandatory "messageId" parameter
+            let args = getPropertiesFromArguments(call.arguments)
+            
+            if let messageId = args["messageId"] as? String  ,  let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId) {
+                //Show Message
+                IterableAPI.inAppManager.show(message: iterableInAppMessage, consume: false, callback: {_ in
+                    result(true)
+                })
+            } else {
+                result(false)
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
     }
+    
+
     
     private func initialize(_ apiKey: String, _ pushIntegrationName: String, _ allowedProtocols: [String]){
         let config = IterableConfig()
@@ -292,3 +317,6 @@ extension SwiftIterableFlutterPlugin: UNUserNotificationCenterDelegate {
         IterableAppIntegration.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
     }
 }
+
+
+
