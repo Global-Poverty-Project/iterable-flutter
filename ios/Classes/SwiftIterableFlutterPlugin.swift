@@ -109,13 +109,12 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             } else {
                 result(false)
             }
-        case "dismissPresentedInboxMessage":
-            getWindow()?.rootViewController?.presentedViewController?.dismiss(animated: true)
-            
         default:
             result(FlutterMethodNotImplemented)
         }
     }
+    
+
     
     private func initialize(_ apiKey: String, _ pushIntegrationName: String, _ allowedProtocols: [String]){
         let config = IterableConfig()

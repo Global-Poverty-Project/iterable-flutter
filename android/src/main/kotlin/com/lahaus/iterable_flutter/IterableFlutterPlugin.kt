@@ -164,11 +164,6 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 }
             }
 
-            "dismissPresentedInboxMessage" -> {
-                val fragment = (activity as? FragmentActivity)?.supportFragmentManager?.fragments?.firstOrNull { it is IterableInAppFragmentHTMLNotification }
-                (activity as? FragmentActivity)?.supportFragmentManager?.beginTransaction()?.remove(fragment!!)?.commitAllowingStateLoss()
-            }
-
             else -> {
                 result.notImplemented()
             }

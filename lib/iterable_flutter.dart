@@ -117,10 +117,6 @@ class IterableFlutter {
     return result;
   }
 
-  Future<void> dismissPresentedInboxMessage() async {
-    await _channel.invokeMethod('dismissPresentedInboxMessage');
-  }
-
   // ignore: use_setters_to_change_properties
   void setIterableActionHandler(IterableActionHandler handler) {
     _actionHandler = handler;
