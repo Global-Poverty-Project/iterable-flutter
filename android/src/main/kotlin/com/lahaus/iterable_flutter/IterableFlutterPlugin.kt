@@ -164,6 +164,28 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 }
             }
 
+            "deleteInboxMessage" -> {
+                // Mandatory "messageId" parameter
+                val messageId = call.argument<String>("messageId")
+                // Find message from inbox
+                val message = IterableApi.getInstance().inAppManager.inboxMessages.firstOrNull {
+                    it.messageId == messageId
+                }
+                // Show message
+                message?.let {
+                    IterableApi.getInstance().inAppManager.removeMessage(
+                        message,
+                        IterableInAppDeleteActionType.INBOX_SWIPE,
+                        IterableInAppLocation.INBOX,
+                    )
+                    result.success(true)
+                    
+                } ?: run {
+                    result.success(false)
+                }
+            }
+
+
             else -> {
                 result.notImplemented()
             }
