@@ -117,6 +117,17 @@ class IterableFlutter {
     return result;
   }
 
+  Future<bool> deleteInboxMessage({required String messageId}) async {
+    final result = await _channel.invokeMethod(
+      'deleteInboxMessage',
+      {
+        'messageId': messageId,
+      },
+    );
+
+    return result;
+  }
+
   // ignore: use_setters_to_change_properties
   void setIterableActionHandler(IterableActionHandler handler) {
     _actionHandler = handler;
