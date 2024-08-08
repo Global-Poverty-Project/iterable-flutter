@@ -117,6 +117,15 @@ class IterableFlutter {
     return result;
   }
 
+  Future<void> setRead({required String messageId}) async {
+    await _channel.invokeMethod(
+      'setRead',
+      {
+        'messageId': messageId,
+      },
+    );
+  }
+
   Future<bool> deleteInboxMessage({required String messageId}) async {
     final result = await _channel.invokeMethod(
       'deleteInboxMessage',

@@ -144,6 +144,22 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 result.success(messagesJson)
             }
 
+            "setRead" -> {
+                // Mandatory "messageId" parameter
+                val messageId = call.argument<String>("messageId")
+                // Find message from inbox
+                val message = IterableApi.getInstance().inAppManager.inboxMessages.firstOrNull {
+                    it.messageId == messageId
+                }
+                // Set message as read 
+                message?.let {
+                    IterableApi.getInstance().inAppManager.setRead(message, true)
+                    result.success(true) 
+                } ?: run {
+                    result.success(false)
+                }
+            }
+
             "showInboxMessage" -> {
                 // Mandatory "messageId" parameter
                 val messageId = call.argument<String>("messageId")
