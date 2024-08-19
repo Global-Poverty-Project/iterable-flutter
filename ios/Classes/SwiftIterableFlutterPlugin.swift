@@ -96,6 +96,18 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
                 return message != nil ?  String(data: message! , encoding: .utf8) ?? "" : ""
             }
             result(messagesString)
+        case "setRead":
+
+            // Mandatory "messageId" parameter
+            let args = getPropertiesFromArguments(call.arguments)
+            
+            if let messageId = args["messageId"] as? String  ,  let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId) {
+                //Set Message as Read
+                IterableAPI.inAppManager.setRead(read: true, forMessage: iterableInAppMessage)
+                result(true)
+            } else {
+                result(false)
+            }
         case "showInboxMessage":
             
             // Mandatory "messageId" parameter
