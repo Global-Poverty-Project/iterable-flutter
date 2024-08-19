@@ -103,7 +103,7 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             
             if let messageId = args["messageId"] as? String  ,  let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId) {
                 //Set Message as Read
-                IterableAPI.inAppManager.setRead(read: true, forMessage: iterableInAppMessage)
+                IterableAPI.inAppManager.set(read: true, forMessage: iterableInAppMessage)
                 result(true)
             } else {
                 result(false)
