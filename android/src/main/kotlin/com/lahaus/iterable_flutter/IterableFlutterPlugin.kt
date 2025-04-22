@@ -255,6 +255,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
             IterableActionSource.APP_LINK -> "appLink"
             IterableActionSource.IN_APP -> "inApp"
+            IterableActionSource.EMBEDDED -> "embedded"
         }
         val actionData = mapOf(
             "itbl" to mapOf(
