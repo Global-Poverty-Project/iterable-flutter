@@ -205,6 +205,8 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             source = "universalLink"
         case .inApp:
             source = "inApp"
+        case .embedded:
+            source = "embedded"
         }
         let arguments: [AnyHashable: Any?] = [
             "itbl": [
