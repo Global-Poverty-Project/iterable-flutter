@@ -17,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry.NewIntentListener
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.regex.Pattern
@@ -231,7 +232,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                     context.source == IterableActionSource.PUSH &&
                         action.type.equals("openApp", ignoreCase = true)
                 if (isPushOpenAppAction) {
-                    notifyPushNotificationOpened()
+                    notifyPushOpenAction(context)
                     // Return false so the native SDK performs its default open-app launch.
                     false
                 } else {
@@ -284,14 +285,83 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     }
 
     // region Push
-    private fun notifyPushNotificationOpened() {
-        val bundleData = IterableApi.getInstance().payloadData
-        bundleData?.let {
-            val pushData = bundleToMap(it).toMutableMap()
-            pushData["source"] = "push"
-            LogUtils.debug("notifyPushNotificationOpened with data $pushData")
-            channel.invokeMethod("actionHandler", pushData)
+
+    /**
+     * Builds and sends the push action message for an openApp notification tap.
+     *
+     * Uses the full FCM payload from [IterableApi.payloadData] when available (so custom
+     * fields such as magic_code are included), parsing the itbl JSON string into a proper
+     * nested Map as Dart expects.  Falls back to a clean message built from the action
+     * context when payloadData is null (e.g. the SDK has not set it yet for this tap).
+     */
+    private fun notifyPushOpenAction(context: IterableActionContext) {
+        val payloadBundle = IterableApi.getInstance().payloadData
+        val message: MutableMap<String, Any?> = if (payloadBundle != null) {
+            val raw = bundleToMap(payloadBundle).toMutableMap()
+            raw["itbl"] = parseItblField(raw["itbl"])
+            raw
+        } else {
+            // payloadData not yet available — build a minimal clean message from the
+            // action context (same fallback as the pre-v0.6.8 notifyIterableAction path).
+            mutableMapOf(
+                "itbl" to mapOf(
+                    "defaultAction" to mapOf(
+                        "type" to context.action.type,
+                        "data" to context.action.data,
+                    )
+                )
+            )
         }
+        message["source"] = "push"
+        mobileInboxActivity?.finish()
+        LogUtils.debug("notifyPushOpenAction with data $message")
+        channel.invokeMethod("actionHandler", message)
+    }
+
+    private fun notifyPushNotificationOpened() {
+        val bundleData = IterableApi.getInstance().payloadData ?: return
+        val pushData = bundleToMap(bundleData).toMutableMap()
+        pushData["itbl"] = parseItblField(pushData["itbl"])
+        pushData["source"] = "push"
+        LogUtils.debug("notifyPushNotificationOpened with data $pushData")
+        channel.invokeMethod("actionHandler", pushData)
+    }
+
+    /**
+     * Parses the itbl field from its raw FCM Bundle form (a JSON string) into a nested Map
+     * that MethodChannel's StandardMessageCodec can serialize. Returns the original value
+     * unchanged if it is already a Map or cannot be parsed.
+     */
+    private fun parseItblField(raw: Any?): Any? {
+        if (raw !is String) return raw
+        return try {
+            jsonToValue(JSONObject(raw))
+        } catch (_: JSONException) {
+            raw // keep unparseable string as-is
+        }
+    }
+
+    /**
+     * Recursively converts a JSONObject / JSONArray / JSONObject.NULL into plain
+     * Kotlin types that MethodChannel's StandardMessageCodec can serialize:
+     *   JSONObject  → Map<String, Any?>
+     *   JSONArray   → List<Any?>
+     *   JSONObject.NULL → null
+     *   primitives (String, Int, Long, Double, Boolean) → as-is
+     */
+    private fun jsonToValue(value: Any?): Any? = when (value) {
+        is JSONObject -> {
+            val map = mutableMapOf<String, Any?>()
+            for (key in value.keys()) map[key] = jsonToValue(value.get(key))
+            map
+        }
+        is JSONArray -> {
+            val list = mutableListOf<Any?>()
+            for (i in 0 until value.length()) list.add(jsonToValue(value.get(i)))
+            list
+        }
+        JSONObject.NULL -> null
+        else -> value
     }
 
     private fun bundleToMap(extras: Bundle): Map<String, Any?> {
