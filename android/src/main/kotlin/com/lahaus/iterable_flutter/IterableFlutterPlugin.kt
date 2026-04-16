@@ -297,14 +297,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
         val payloadBundle = IterableApi.getInstance().payloadData
         val message: MutableMap<String, Any?> = if (payloadBundle != null) {
             val raw = bundleToMap(payloadBundle).toMutableMap()
-            // itbl is stored as a JSON string in the FCM Bundle.  Parse it into a nested
-            // Map so Dart can access map["itbl"]["defaultAction"]["type"] etc.
-            val itblRaw = raw["itbl"]
-            if (itblRaw is String) {
-                try {
-                    raw["itbl"] = jsonObjectToMap(JSONObject(itblRaw))
-                } catch (_: JSONException) { /* keep raw string if unparseable */ }
-            }
+            raw["itbl"] = parseItblField(raw["itbl"])
             raw
         } else {
             // payloadData not yet available — build a minimal clean message from the
@@ -327,29 +320,47 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     private fun notifyPushNotificationOpened() {
         val bundleData = IterableApi.getInstance().payloadData ?: return
         val pushData = bundleToMap(bundleData).toMutableMap()
-        // itbl is stored as a JSON string in the FCM Bundle; parse it so Dart receives a
-        // proper nested Map instead of a raw string.
-        val itblRaw = pushData["itbl"]
-        if (itblRaw is String) {
-            try {
-                pushData["itbl"] = jsonObjectToMap(JSONObject(itblRaw))
-            } catch (_: JSONException) { /* keep raw string if unparseable */ }
-        }
+        pushData["itbl"] = parseItblField(pushData["itbl"])
         pushData["source"] = "push"
         LogUtils.debug("notifyPushNotificationOpened with data $pushData")
         channel.invokeMethod("actionHandler", pushData)
     }
 
-    private fun jsonObjectToMap(obj: JSONObject): Map<String, Any?> {
-        val map = mutableMapOf<String, Any?>()
-        for (key in obj.keys()) {
-            map[key] = when (val value = obj.get(key)) {
-                is JSONObject -> jsonObjectToMap(value)
-                JSONObject.NULL -> null
-                else -> value
-            }
+    /**
+     * Parses the itbl field from its raw FCM Bundle form (a JSON string) into a nested Map
+     * that MethodChannel's StandardMessageCodec can serialize. Returns the original value
+     * unchanged if it is already a Map or cannot be parsed.
+     */
+    private fun parseItblField(raw: Any?): Any? {
+        if (raw !is String) return raw
+        return try {
+            jsonToValue(JSONObject(raw))
+        } catch (_: JSONException) {
+            raw // keep unparseable string as-is
         }
-        return map
+    }
+
+    /**
+     * Recursively converts a JSONObject / JSONArray / JSONObject.NULL into plain
+     * Kotlin types that MethodChannel's StandardMessageCodec can serialize:
+     *   JSONObject  → Map<String, Any?>
+     *   JSONArray   → List<Any?>
+     *   JSONObject.NULL → null
+     *   primitives (String, Int, Long, Double, Boolean) → as-is
+     */
+    private fun jsonToValue(value: Any?): Any? = when (value) {
+        is JSONObject -> {
+            val map = mutableMapOf<String, Any?>()
+            for (key in value.keys()) map[key] = jsonToValue(value.get(key))
+            map
+        }
+        is JSONArray -> {
+            val list = mutableListOf<Any?>()
+            for (i in 0 until value.length()) list.add(jsonToValue(value.get(i)))
+            list
+        }
+        JSONObject.NULL -> null
+        else -> value
     }
 
     private fun bundleToMap(extras: Bundle): Map<String, Any?> {
