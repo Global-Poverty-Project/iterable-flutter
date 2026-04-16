@@ -1,3 +1,7 @@
+## 0.6.3
+- fix(Android Push): parse itbl JSON string into a nested Map before sending to Dart, fixing NoSuchMethodError crash
+- fix(Android Push): fall back to action-context message when payloadData is null, restoring pre-v0.6.2 behaviour for openApp taps
+
 ## 0.6.2
 - fix(Android Push): when default action is `openApp`, return `false` from custom action handler so the app is actually brought to foreground on notification tap
 

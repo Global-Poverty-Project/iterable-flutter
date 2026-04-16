@@ -231,7 +231,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                     context.source == IterableActionSource.PUSH &&
                         action.type.equals("openApp", ignoreCase = true)
                 if (isPushOpenAppAction) {
-                    notifyPushNotificationOpened()
+                    notifyPushOpenAction(context)
                     // Return false so the native SDK performs its default open-app launch.
                     false
                 } else {
@@ -284,14 +284,72 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     }
 
     // region Push
-    private fun notifyPushNotificationOpened() {
-        val bundleData = IterableApi.getInstance().payloadData
-        bundleData?.let {
-            val pushData = bundleToMap(it).toMutableMap()
-            pushData["source"] = "push"
-            LogUtils.debug("notifyPushNotificationOpened with data $pushData")
-            channel.invokeMethod("actionHandler", pushData)
+
+    /**
+     * Builds and sends the push action message for an openApp notification tap.
+     *
+     * Uses the full FCM payload from [IterableApi.payloadData] when available (so custom
+     * fields such as magic_code are included), parsing the itbl JSON string into a proper
+     * nested Map as Dart expects.  Falls back to a clean message built from the action
+     * context when payloadData is null (e.g. the SDK has not set it yet for this tap).
+     */
+    private fun notifyPushOpenAction(context: IterableActionContext) {
+        val payloadBundle = IterableApi.getInstance().payloadData
+        val message: MutableMap<String, Any?> = if (payloadBundle != null) {
+            val raw = bundleToMap(payloadBundle).toMutableMap()
+            // itbl is stored as a JSON string in the FCM Bundle.  Parse it into a nested
+            // Map so Dart can access map["itbl"]["defaultAction"]["type"] etc.
+            val itblRaw = raw["itbl"]
+            if (itblRaw is String) {
+                try {
+                    raw["itbl"] = jsonObjectToMap(JSONObject(itblRaw))
+                } catch (_: JSONException) { /* keep raw string if unparseable */ }
+            }
+            raw
+        } else {
+            // payloadData not yet available — build a minimal clean message from the
+            // action context (same fallback as the pre-v0.6.8 notifyIterableAction path).
+            mutableMapOf(
+                "itbl" to mapOf(
+                    "defaultAction" to mapOf(
+                        "type" to context.action.type,
+                        "data" to context.action.data,
+                    )
+                )
+            )
         }
+        message["source"] = "push"
+        mobileInboxActivity?.finish()
+        LogUtils.debug("notifyPushOpenAction with data $message")
+        channel.invokeMethod("actionHandler", message)
+    }
+
+    private fun notifyPushNotificationOpened() {
+        val bundleData = IterableApi.getInstance().payloadData ?: return
+        val pushData = bundleToMap(bundleData).toMutableMap()
+        // itbl is stored as a JSON string in the FCM Bundle; parse it so Dart receives a
+        // proper nested Map instead of a raw string.
+        val itblRaw = pushData["itbl"]
+        if (itblRaw is String) {
+            try {
+                pushData["itbl"] = jsonObjectToMap(JSONObject(itblRaw))
+            } catch (_: JSONException) { /* keep raw string if unparseable */ }
+        }
+        pushData["source"] = "push"
+        LogUtils.debug("notifyPushNotificationOpened with data $pushData")
+        channel.invokeMethod("actionHandler", pushData)
+    }
+
+    private fun jsonObjectToMap(obj: JSONObject): Map<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+        for (key in obj.keys()) {
+            map[key] = when (val value = obj.get(key)) {
+                is JSONObject -> jsonObjectToMap(value)
+                JSONObject.NULL -> null
+                else -> value
+            }
+        }
+        return map
     }
 
     private fun bundleToMap(extras: Bundle): Map<String, Any?> {
