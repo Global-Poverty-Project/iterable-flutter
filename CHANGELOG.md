@@ -1,3 +1,6 @@
+## 0.6.2
+- fix(Android Push): when default action is `openApp`, return `false` from custom action handler so the app is actually brought to foreground on notification tap
+
 ## 0.6.1
 - fix(in-app): dismiss presented vc before handling action
 - chore: bump iterable native sdks to the latest version

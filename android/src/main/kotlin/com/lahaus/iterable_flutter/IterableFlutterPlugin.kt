@@ -226,9 +226,18 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 notifyIterableAction(context)
                 true
             }
-            .setCustomActionHandler { _, context ->
-                notifyIterableAction(context)
-                true
+            .setCustomActionHandler { action, context ->
+                val isPushOpenAppAction =
+                    context.source == IterableActionSource.PUSH &&
+                        action.type.equals("openApp", ignoreCase = true)
+                if (isPushOpenAppAction) {
+                    notifyPushNotificationOpened()
+                    // Return false so the native SDK performs its default open-app launch.
+                    false
+                } else {
+                    notifyIterableAction(context)
+                    true
+                }
             }
 
         if (activeLogDebug) {
