@@ -1,3 +1,7 @@
+## 0.6.10
+- fix(iOS deeplinks): handle universal links delivered through the UIScene lifecycle, so an Iterable link opens the linked content on cold start too (Flutter only bridges custom-scheme URLs to the application delegate at launch)
+- fix(deeplinks): register the Dart action handler before initializing the native SDK so a link resolved right after init is not dropped
+
 ## 0.6.9
 - fix(Android Push): parse itbl JSON string into a nested Map before sending to Dart, fixing NoSuchMethodError crash
 - fix(Android Push): fall back to action-context message when payloadData is null, restoring pre-v0.6.8 behaviour for openApp taps

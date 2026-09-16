@@ -27,6 +27,9 @@ class IterableFlutter {
     bool activeLogDebug = false,
     List<String> allowedProtocols = const ['https'],
   }) async {
+    // Registered first: a link queued during a cold start is replayed by the
+    // native SDK as soon as initialize completes.
+    _channel.setMethodCallHandler(_nativeMethodCallHandler);
     await _channel.invokeMethod(
       'initialize',
       {
@@ -36,7 +39,6 @@ class IterableFlutter {
         'allowedProtocols': allowedProtocols,
       },
     );
-    _channel.setMethodCallHandler(_nativeMethodCallHandler);
   }
 
   Future<void> setEmail(String email) async {

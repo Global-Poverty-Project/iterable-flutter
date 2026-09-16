@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'iterable_flutter'
-  s.version          = '0.6.7'
+  s.version          = '0.6.10'
   s.summary          = 'Flutter implementation for iterable.com Cross Channel Marketing Platform'
   s.description      = <<-DESC
   Flutter implementation for iterable.com Cross Channel Marketing Platform

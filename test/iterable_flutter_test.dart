@@ -140,6 +140,41 @@ void main() {
     expect(contentBody, pushData[keyBody]);
   });
 
+  test("actionHandler sent while initialize is in flight is delivered", () async {
+    // Cold start: the native SDK replays a queued universal link as soon as
+    // initialize completes, before the Dart await resumes.
+    dynamic openedResult;
+    IterableFlutter.instance.setIterableActionHandler((openedResultMap) {
+      openedResult = openedResultMap;
+    });
+    channel.setMockMethodCallHandler((MethodCall methodCall) async {
+      if (methodCall.method == 'initialize') {
+        await ServicesBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+          'iterable_flutter',
+          const StandardMethodCodec().encodeMethodCall(
+            const MethodCall('actionHandler', {
+              'source': 'universalLink',
+              'itbl': {
+                'defaultAction': {'type': 'openUrl', 'data': 'https://gc.org/x'},
+              },
+            }),
+          ),
+          (ByteData? data) {},
+        );
+      }
+      return null;
+    });
+
+    await IterableFlutter.instance.initialize(
+      apiKey: apiKey,
+      pushIntegrationName: pushIntegrationName,
+    );
+
+    expect(openedResult, isNotNull);
+    expect(openedResult['source'], 'universalLink');
+  });
+
   test('updateUser', () async {
     await IterableFlutter.instance.updateUser(params: {});
     expect(calledMethod, <Matcher>[
