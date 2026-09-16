@@ -15,6 +15,9 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
         registrar.addMethodCallDelegate(instance, channel: channel!)
         
         registrar.addApplicationDelegate(instance)
+        if #available(iOS 13.0, *) {
+            registrar.addSceneDelegate(instance)
+        }
     }
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -308,15 +311,20 @@ extension SwiftIterableFlutterPlugin {
     }
     
     public func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([Any]) -> Void) -> Bool {
-        
-        // Ensure it's an universal link
+        return handleUniversalLink(from: userActivity)
+    }
+    
+    // Shared by the application and scene entry points. Before `initialize` runs the SDK
+    // queues the link itself and replays it once initialized (cold start).
+    func handleUniversalLink(from userActivity: NSUserActivity) -> Bool {
         guard let url = userActivity.webpageURL, isIterableDeepLink(url.absoluteString) else {
             return false
         }
-        
+        LogUtils.debug(message: "Handling Iterable universal link \(url)")
         // This tracks the click, retrieves the original URL, and uses it to
         // call handleIterableURL:context:
-        return IterableAPI.handle(universalLink: url)
+        IterableAPI.handle(universalLink: url)
+        return true
     }
     
     private func isIterableDeepLink(_ urlString: String) -> Bool {
@@ -326,6 +334,23 @@ extension SwiftIterableFlutterPlugin {
         }
         
         return regex.firstMatch(in: urlString, options: [], range: NSMakeRange(0, urlString.count)) != nil
+    }
+}
+// MARK: FlutterSceneLifeCycleDelegate
+// Flutter bridges warm-start activities to application(_:continue:), but at launch it only
+// converts URL contexts, so a cold-start universal link is visible here only.
+@available(iOS 13.0, *)
+extension SwiftIterableFlutterPlugin: FlutterSceneLifeCycleDelegate {
+    
+    public func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions?) -> Bool {
+        for userActivity in connectionOptions?.userActivities ?? [] where handleUniversalLink(from: userActivity) {
+            return true
+        }
+        return false
+    }
+    
+    public func scene(_ scene: UIScene, continue userActivity: NSUserActivity) -> Bool {
+        return handleUniversalLink(from: userActivity)
     }
 }
 // MARK: UNUserNotificationCenterDelegate
