@@ -1,3 +1,6 @@
+## 0.6.11
+- fix(Android build): replace `jcenter()` with `mavenCentral()` and compile against Android API 36, so the plugin builds with Gradle 9 and AGP 9 (Flutter 3.47+)
+
 ## 0.6.10
 - fix(iOS deeplinks): handle universal links delivered through the UIScene lifecycle, so an Iterable link opens the linked content on cold start too (Flutter only bridges custom-scheme URLs to the application delegate at launch)
 - fix(deeplinks): register the Dart action handler before initializing the native SDK so a link resolved right after init is not dropped
