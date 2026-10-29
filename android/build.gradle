@@ -5,7 +5,7 @@ buildscript {
     ext.kotlin_version = '1.6.21'
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
 
     dependencies {
@@ -17,7 +17,7 @@ buildscript {
 rootProject.allprojects {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
 }
 
@@ -27,7 +27,7 @@ apply plugin: 'kotlin-android'
 android {
     namespace = "com.lahaus.iterable_flutter"
 
-    compileSdkVersion 33
+    compileSdkVersion 36
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
