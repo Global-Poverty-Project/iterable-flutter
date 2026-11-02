@@ -1,15 +1,15 @@
 group 'com.lahaus.iterable_flutter'
-version '0.5.7'
+version '0.8.0'
 
 buildscript {
-    ext.kotlin_version = '1.6.21'
+    ext.kotlin_version = '2.4.0'
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.3.0'
+        classpath 'com.android.tools.build:gradle:9.1.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -22,18 +22,22 @@ rootProject.allprojects {
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
 
 android {
     namespace = "com.lahaus.iterable_flutter"
 
-    compileSdkVersion 36
+    compileSdk = 36
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
     defaultConfig {
-        minSdkVersion 23
+        minSdk = 23
     }
 
     testOptions {
@@ -41,10 +45,16 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 dependencies {
-    implementation 'com.iterable:iterableapi:3.5.12'
+    implementation 'com.iterable:iterableapi:3.11.1'
     // Inbox UI components
-    implementation 'com.iterable:iterableapi-ui:3.5.12'
+    implementation 'com.iterable:iterableapi-ui:3.11.1'
     implementation 'com.google.android.material:material:1.7.0'
     implementation "androidx.appcompat:appcompat:1.6.0-rc01"
 
