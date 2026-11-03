@@ -1,3 +1,9 @@
+## 0.8.0
+- feat(iOS): support Swift Package Manager. Sources moved to `ios/iterable_flutter/Sources/iterable_flutter`, and the Objective-C registration shim was removed (`SwiftIterableFlutterPlugin` is now the plugin class). CocoaPods keeps working.
+- fix(Android build): support built-in Kotlin. The plugin no longer applies `kotlin-android`, and it targets Java 17.
+- chore: bump Iterable native SDKs to Android 3.11.1 and iOS 6.7.5
+- chore: require Flutter 3.47.8 (its tooling applies `kotlin-android` when built-in Kotlin is disabled) and iOS 15.0
+
 ## 0.6.11
 - fix(Android build): replace `jcenter()` with `mavenCentral()` and compile against Android API 36, so the plugin builds with Gradle 9 and AGP 9 (Flutter 3.47+) in legacy compatibility mode (`android.builtInKotlin=false` and `android.newDsl=false`). The plugin still applies `kotlin-android`, so it fails to configure when built-in Kotlin is enabled. Migrating to built-in Kotlin is pending.
 
