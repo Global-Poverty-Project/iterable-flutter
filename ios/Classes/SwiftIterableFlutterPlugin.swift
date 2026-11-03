@@ -8,6 +8,13 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
     static var channel: FlutterMethodChannel? = nil
     
     var launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
+    private var pushLifecycle: IterablePushLifecycle?
+    private var identityGeneration = 0
+    private var pushRetryTimer: Timer?
+
+    private var pushIdentity: IterablePushIdentity? {
+        IterablePushIdentity(email: IterableAPI.email, userId: IterableAPI.userId)
+    }
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         channel = FlutterMethodChannel(name: "iterable_flutter", binaryMessenger: registrar.messenger())
@@ -36,14 +43,10 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             result(nil)
         case "setEmail":
             let email = call.arguments as! String
-            IterableAPI.email = email
-            
-            result(nil)
+            setPushIdentity(email: email, userId: nil, result: result)
         case "setUserId":
             let userId = call.arguments as! String
-            IterableAPI.userId = userId
-            
-            result(nil)
+            setPushIdentity(email: nil, userId: userId, result: result)
         case "track":
             let eventName = call.arguments as! String
             IterableAPI.track(event: eventName)
@@ -65,9 +68,7 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             
             result(nil)
         case "signOut":
-            signOut()
-            
-            result(nil)
+            signOut(result: result)
         case "showMobileInbox":
             if let rootViewController = getRootViewController() {
                 let args = getPropertiesFromArguments(call.arguments)
@@ -157,6 +158,12 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
         config.customActionDelegate = self
         
         IterableAPI.initialize(apiKey: apiKey, launchOptions: launchOptions, config: config)
+        pushLifecycle = IterablePushLifecycle(apiKey: apiKey)
+        pushLifecycle?.flush()
+        pushRetryTimer?.invalidate()
+        pushRetryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.pushLifecycle?.flush()
+        }
     }
     
     private func getPropertiesFromArguments(_ callArguments: Any?) -> [String: Any] {
@@ -166,18 +173,56 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
         return [:]
     }
     
-    func signOut() {
-        IterableAPI.disableDeviceForCurrentUser()
+    private func signOut(result: @escaping FlutterResult) {
+        identityGeneration += 1
+        let outgoing = pushIdentity
+        pushLifecycle?.enqueueLogout(outgoing)
+        // Persist the outgoing token + identity before clearing local SDK state.
         IterableAPI.logoutUser()
+        if outgoing != nil && pushLifecycle?.token == nil {
+            // Resolve an early cold-start logout without requesting alert permission.
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+        if let lifecycle = pushLifecycle {
+            lifecycle.flush { result(nil) }
+        } else {
+            result(nil)
+        }
+    }
+
+    private func setPushIdentity(email: String?, userId: String?, result: @escaping FlutterResult) {
+        let next = IterablePushIdentity(email: email, userId: userId)!
+        if pushIdentity == next {
+            result(nil)
+            return
+        }
+        identityGeneration += 1
+        let generation = identityGeneration
+        pushLifecycle?.enqueueLogout(pushIdentity)
+        IterableAPI.logoutUser()
+        pushLifecycle?.resume(next)
+        let identify = { [weak self] in
+            guard let self = self, self.identityGeneration == generation else {
+                result(FlutterError(code: "IDENTITY_SUPERSEDED", message: "Iterable session changed", details: nil))
+                return
+            }
+            if let email = email { IterableAPI.email = email }
+            else { IterableAPI.userId = userId }
+            result(nil)
+        }
+        if let lifecycle = pushLifecycle { lifecycle.flush(completion: identify) }
+        else { identify() }
     }
     
     func registerForPushNotifications() {
+        let generation = identityGeneration
+        guard pushIdentity != nil else { return }
         UNUserNotificationCenter.current()
             .requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
                 guard granted else { return }
-                guard self != nil else { return }
-                
                 DispatchQueue.main.async {
+                    guard let self = self, self.identityGeneration == generation,
+                          self.pushIdentity != nil else { return }
                     UIApplication.shared.registerForRemoteNotifications()
                 }
             }
@@ -294,7 +339,25 @@ extension SwiftIterableFlutterPlugin {
     }
     
     public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        IterableAPI.register(token: deviceToken)
+        pushLifecycle?.receiveToken(deviceToken)
+        guard let identity = pushIdentity else {
+            pushLifecycle?.flush()
+            return
+        }
+        let generation = identityGeneration
+        pushLifecycle?.resume(identity)
+        pushLifecycle?.willRegister(identity)
+        pushLifecycle?.flush { [weak self] in
+            guard let self = self, self.identityGeneration == generation,
+                  self.pushIdentity == identity else { return }
+            IterableAPI.register(token: deviceToken,
+                onSuccess: { _ in NSLog("[IterablePush] registration confirmed") },
+                onFailure: { _, _ in NSLog("[IterablePush] registration failed") })
+        }
+    }
+
+    public func applicationDidBecomeActive(_ application: UIApplication) {
+        pushLifecycle?.flush()
     }
     
     public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {

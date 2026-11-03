@@ -83,14 +83,23 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
             "setEmail" -> {
                 val userEmail = call.arguments as String
+                val sdk = IterableApi.getInstance()
+                if ((sdk.email != null || sdk.userId != null) && sdk.email != userEmail) {
+                    sdk.disablePush()
+                    sdk.setEmail(null)
+                }
                 IterableApi.getInstance().setEmail(userEmail)
-                IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
 
             "setUserId" -> {
+                val sdk = IterableApi.getInstance()
+                val userId = call.arguments as String
+                if ((sdk.email != null || sdk.userId != null) && sdk.userId != userId) {
+                    sdk.disablePush()
+                    sdk.setEmail(null)
+                }
                 IterableApi.getInstance().setUserId(call.arguments as String)
-                IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
 
@@ -100,12 +109,17 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             }
 
             "registerForPush" -> {
-                IterableApi.getInstance().registerForPush()
+                val sdk = IterableApi.getInstance()
+                if (sdk.email != null || sdk.userId != null) sdk.registerForPush()
                 result.success(null)
             }
 
             "signOut" -> {
-                IterableApi.getInstance().disablePush()
+                val sdk = IterableApi.getInstance()
+                if (sdk.email != null || sdk.userId != null) sdk.disablePush()
+                // Also clears userId. Prevents the native FCM refresh service
+                // from registering a token for an account that has logged out.
+                sdk.setEmail(null)
                 result.success(null)
             }
 
