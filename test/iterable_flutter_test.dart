@@ -67,7 +67,8 @@ void main() {
         arguments: {
           apiKey: apiKey,
           pushIntegrationName: pushIntegrationName,
-          activeLogDebug: false
+          activeLogDebug: false,
+          'allowedProtocols': ['https'],
         },
       ),
     ]);
@@ -132,7 +133,12 @@ void main() {
         const StandardMethodCodec().encodeMethodCall(
           const MethodCall(
             'actionHandler',
-            {keyBody: contentBody},
+            {
+              keyBody: contentBody,
+              'itbl': {
+                'defaultAction': {'type': 'openApp'},
+              },
+            },
           ),
         ),
         (ByteData? data) {});
@@ -205,66 +211,35 @@ void main() {
 
   group('.sanitizeMap', () {
     group('when metadata comes from Android', () {
-      test('should return a clear map', () {
-        final additionalData = buildPushNotificationMetadataAndroid();
+      test('should parse the itbl JSON string', () {
+        final result = IterableFlutter.instance
+            .sanitizeArguments(buildPushNotificationMetadataAndroid());
 
-        final result =
-            IterableFlutter.instance.sanitizeArguments(additionalData);
-
-        expect(result['body'], 'test');
-        expect(result['additionalData']['keyNumber'] as int, 1);
-        expect(result['additionalData']['keyMap']['keyMap2'], 'value2');
-        expect(
-            result['additionalData']['keyMapChild']['keyMapChild3']
-                ['keyMapChild32'],
-            'value3');
-        expect(
-            result['additionalData']['itbl']['isGhostPush'] as bool, isFalse);
-        expect(result['additionalData']['itbl']['defaultAction']['type'],
-            'openApp');
+        expect(result['source'], 'push');
+        expect(result['itbl']['isGhostPush'] as bool, isFalse);
+        expect(result['itbl']['defaultAction']['type'], 'openApp');
       });
     });
 
     group('when metadata comes from iOS', () {
       group('when payload arrives clean', () {
-        test('should return a clear map', () {
-          final additionalData = buildPushNotificationMetadataIOS();
+        test('should keep the itbl map', () {
+          final result = IterableFlutter.instance
+              .sanitizeArguments(buildPushNotificationMetadataIOS());
 
-          final result =
-              IterableFlutter.instance.sanitizeArguments(additionalData);
-
-          expect(result['body'], 'test');
-          expect(result['additionalData']['keyNumber'] as int, 1);
-          expect(result['additionalData']['keyMap']['keyMap2'], 'value2');
-          expect(
-              result['additionalData']['keyMapChild']['keyMapChild3']
-                  ['keyMapChild32'],
-              'value3');
-          expect(
-              result['additionalData']['itbl']['isGhostPush'] as bool, isFalse);
-          expect(result['additionalData']['itbl']['defaultAction']['type'],
-              'openApp');
+          expect(result['source'], 'push');
+          expect(result['itbl']['isGhostPush'] as bool, isFalse);
+          expect(result['itbl']['defaultAction']['type'], 'openApp');
         });
       });
 
       group('when payload does not arrives clean', () {
-        test('should return a clear map', () {
-          final additionalData = buildPushNotificationMetadataIOSWithQuot();
+        test('should decode &quot; and parse the itbl JSON string', () {
+          final result = IterableFlutter.instance
+              .sanitizeArguments(buildPushNotificationMetadataIOSWithQuot());
 
-          final result =
-              IterableFlutter.instance.sanitizeArguments(additionalData);
-
-          expect(result['body'], 'test');
-          expect(result['additionalData']['keyNumber'] as int, 1);
-          expect(result['additionalData']['keyMap']['keyMap2'], 'value2');
-          expect(
-              result['additionalData']['keyMapChild']['keyMapChild3']
-                  ['keyMapChild32'],
-              'value3');
-          expect(
-              result['additionalData']['itbl']['isGhostPush'] as bool, isFalse);
-          expect(result['additionalData']['itbl']['defaultAction']['type'],
-              'openApp');
+          expect(result['itbl']['isGhostPush'] as bool, isFalse);
+          expect(result['itbl']['defaultAction']['type'], 'openApp');
         });
       });
     });
