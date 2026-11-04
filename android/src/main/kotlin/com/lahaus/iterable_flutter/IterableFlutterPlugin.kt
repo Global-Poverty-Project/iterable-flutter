@@ -1,10 +1,13 @@
 package com.lahaus.iterable_flutter
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.fragment.app.FragmentActivity
 import com.iterable.iterableapi.*
@@ -47,6 +50,15 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     // Hold reference to MobileInboxActivity to dismiss when handling actions
     private var mobileInboxActivity: MobileInboxActivity? = null
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var observedInAppManager: IterableInAppManager? = null
+    private val inboxListener = IterableInAppManager.Listener {
+        mainHandler.post { channel.invokeMethod("inboxChanged", null) }
+    }
+    @SuppressLint("RestrictedApi")
+    private val inboxSessionManager = InboxSessionManager()
+    private var visibleInboxMessageIds = emptyList<String>()
+
     // region FlutterPlugin
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         context = flutterPluginBinding.applicationContext
@@ -58,6 +70,8 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        observedInAppManager?.removeListener(inboxListener)
+        observedInAppManager = null
         activityPluginBinding = null
         activity = null
         context = null
@@ -105,7 +119,8 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             }
 
             "signOut" -> {
-                IterableApi.getInstance().disablePush()
+                // With autoPushRegistration, clearing the identity disables the outgoing user's device.
+                IterableApi.getInstance().setEmail(null)
                 result.success(null)
             }
 
@@ -169,13 +184,29 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                     it.messageId == messageId
                 }
                 // Show message
-                message?.let {
+                if (message != null && !message.isJsonOnly) {
                     IterableApi.getInstance().inAppManager.showMessage(
                         message,
                         false,
-                        { _ -> result.success(true)},
-                        IterableInAppLocation.IN_APP,
+                        null,
+                        IterableInAppLocation.INBOX,
                     )
+                    result.success(true)
+                } else {
+                    result.success(false)
+                }
+            }
+
+            "markInboxMessageRead" -> {
+                val messageId = call.argument<String>("messageId")
+                val message = IterableApi.getInstance().inAppManager.inboxMessages.firstOrNull {
+                    it.messageId == messageId
+                }
+                message?.let {
+                    // setRead only updates the local cache; the open event persists the read in Iterable.
+                    IterableApi.getInstance().trackInAppOpen(message, IterableInAppLocation.INBOX)
+                    IterableApi.getInstance().inAppManager.setRead(message, true)
+                    result.success(true)
                 } ?: run {
                     result.success(false)
                 }
@@ -184,22 +215,48 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             "deleteInboxMessage" -> {
                 // Mandatory "messageId" parameter
                 val messageId = call.argument<String>("messageId")
+                val api = IterableApi.getInstance()
                 // Find message from inbox
-                val message = IterableApi.getInstance().inAppManager.inboxMessages.firstOrNull {
+                val message = api.inAppManager.inboxMessages.firstOrNull {
                     it.messageId == messageId
                 }
-                // Show message
-                message?.let {
-                    IterableApi.getInstance().inAppManager.removeMessage(
+                // inAppConsume returns without calling either handler when there is no user.
+                if (message == null || (api.email == null && api.userId == null)) {
+                    result.success(false)
+                } else {
+                    var completed = false
+                    val complete = { success: Boolean ->
+                        mainHandler.post {
+                            if (!completed) {
+                                completed = true
+                                result.success(success)
+                            }
+                        }
+                    }
+                    api.inAppManager.removeMessage(
                         message,
                         IterableInAppDeleteActionType.INBOX_SWIPE,
                         IterableInAppLocation.INBOX,
+                        { _ -> complete(true) },
+                        { _, _ -> complete(false) },
                     )
-                    result.success(true)
-                    
-                } ?: run {
-                    result.success(false)
                 }
+            }
+
+            "startInboxSession" -> {
+                startInboxSession()
+                result.success(null)
+            }
+
+            "endInboxSession" -> {
+                endInboxSession()
+                result.success(null)
+            }
+
+            "updateVisibleInboxMessages" -> {
+                visibleInboxMessageIds = call.argument<List<String>>("messageIds") ?: emptyList()
+                updateVisibleInboxRows()
+                result.success(null)
             }
 
 
@@ -217,7 +274,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     ) {
         val configBuilder = IterableConfig.Builder()
             .setPushIntegrationName(pushIntegrationName)
-            .setAutoPushRegistration(false)
+            .setAutoPushRegistration(true)
 //            .setUseInMemoryStorageForInApps(true)
             .setInAppHandler {
                 IterableInAppHandler.InAppResponse.SHOW
@@ -248,9 +305,42 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
         context?.let { IterableApi.initialize(it, apiKey, configBuilder.build()) }
 
+        observeInbox()
+
         // Maybe handle pending app link
         isInitialized = true
         pendingAppLinkUrl?.let { IterableApi.getInstance().handleAppLink(it) }
+    }
+
+    private fun observeInbox() {
+        val inAppManager = IterableApi.getInstance().inAppManager
+        if (observedInAppManager === inAppManager) return
+        observedInAppManager?.removeListener(inboxListener)
+        inAppManager.addListener(inboxListener)
+        observedInAppManager = inAppManager
+    }
+
+    @SuppressLint("RestrictedApi")
+    private fun startInboxSession() {
+        if (inboxSessionManager.isTracking) return
+        inboxSessionManager.startSession()
+        updateVisibleInboxRows()
+    }
+
+    // Also tracks the session through IterableApi.trackInboxSession.
+    @SuppressLint("RestrictedApi")
+    private fun endInboxSession() {
+        if (inboxSessionManager.isTracking) inboxSessionManager.endSession()
+    }
+
+    // Unknown ids are filtered out because InboxSessionManager dereferences the message it looks up.
+    @SuppressLint("RestrictedApi")
+    private fun updateVisibleInboxRows() {
+        if (!inboxSessionManager.isTracking) return
+        val rows = IterableApi.getInstance().inAppManager.inboxMessages
+            .filter { visibleInboxMessageIds.contains(it.messageId) }
+            .map { IterableInboxSession.Impression(it.messageId, it.isSilentInboxMessage, 0, 0f) }
+        inboxSessionManager.updateVisibleRows(rows)
     }
 
     private fun notifyIterableAction(context: IterableActionContext) {

@@ -9,6 +9,12 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
     
     var launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     
+    private var inboxChangedObserver: NSObjectProtocol? = nil
+    private let inboxSessionManager = InboxSessionManager()
+    // InboxSessionManager.isTracking is internal to the SDK.
+    private var isInboxSessionActive = false
+    private var visibleInboxMessageIds: [String] = []
+    
     public static func register(with registrar: FlutterPluginRegistrar) {
         channel = FlutterMethodChannel(name: "iterable_flutter", binaryMessenger: registrar.messenger())
         let instance = SwiftIterableFlutterPlugin()
@@ -116,11 +122,21 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             // Mandatory "messageId" parameter
             let args = getPropertiesFromArguments(call.arguments)
             
-            if let messageId = args["messageId"] as? String  ,  let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId) {
+            if let messageId = args["messageId"] as? String  ,  let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId), !iterableInAppMessage.jsonOnly {
                 //Show Message
-                IterableAPI.inAppManager.show(message: iterableInAppMessage, consume: false, callback: {_ in
-                    result(true)
-                })
+                IterableAPI.inAppManager.show(message: iterableInAppMessage, consume: false, callback: nil)
+                result(true)
+            } else {
+                result(false)
+            }
+        case "markInboxMessageRead":
+            let args = getPropertiesFromArguments(call.arguments)
+            
+            if let messageId = args["messageId"] as? String, let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId) {
+                // set(read:) only updates the local cache; the open event persists the read in Iterable.
+                IterableAPI.track(inAppOpen: iterableInAppMessage, location: .inbox)
+                IterableAPI.inAppManager.set(read: true, forMessage: iterableInAppMessage)
+                result(true)
             } else {
                 result(false)
             }
@@ -131,15 +147,40 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             
             if let messageId = args["messageId"] as? String  ,  let iterableInAppMessage = IterableAPI.inAppManager.getMessage(withId: messageId) {
                 //Delete Message
+                var completed = false
+                let complete: (Bool) -> Void = { success in
+                    DispatchQueue.main.async {
+                        guard !completed else { return }
+                        completed = true
+                        result(success)
+                    }
+                }
                 IterableAPI.inAppManager.remove(message: iterableInAppMessage,
                                                 location: .inbox,
-                                                source: .inboxSwipe
+                                                source: .inboxSwipe,
+                                                successHandler: { _ in complete(true) },
+                                                failureHandler: { _, _ in complete(false) }
                                                 )
-                result(true)
                 
             } else {
                 result(false)
             }
+        case "startInboxSession":
+            if !isInboxSessionActive {
+                isInboxSessionActive = true
+                inboxSessionManager.startSession(visibleRows: visibleInboxRows())
+            }
+            result(nil)
+        case "endInboxSession":
+            endInboxSession()
+            result(nil)
+        case "updateVisibleInboxMessages":
+            let args = getPropertiesFromArguments(call.arguments)
+            visibleInboxMessageIds = args["messageIds"] as? [String] ?? []
+            if isInboxSessionActive {
+                inboxSessionManager.updateVisibleRows(visibleRows: visibleInboxRows())
+            }
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -151,12 +192,41 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
         let config = IterableConfig()
         config.pushIntegrationName = pushIntegrationName
         config.allowedProtocols = allowedProtocols
-        config.autoPushRegistration = false
+        config.autoPushRegistration = true
         config.useInMemoryStorageForInApps = true
         config.urlDelegate = self
         config.customActionDelegate = self
         
         IterableAPI.initialize(apiKey: apiKey, launchOptions: launchOptions, config: config)
+        
+        if inboxChangedObserver == nil {
+            inboxChangedObserver = NotificationCenter.default.addObserver(forName: .iterableInboxChanged, object: nil, queue: .main) { _ in
+                SwiftIterableFlutterPlugin.channel?.invokeMethod("inboxChanged", arguments: nil)
+            }
+        }
+    }
+    
+    private func visibleInboxRows() -> [InboxImpressionTracker.RowInfo] {
+        return IterableAPI.inAppManager.getInboxMessages()
+            .filter { visibleInboxMessageIds.contains($0.messageId) }
+            .map { InboxImpressionTracker.RowInfo(messageId: $0.messageId, silentInbox: $0.silentInbox) }
+    }
+    
+    private func endInboxSession() {
+        guard isInboxSessionActive else { return }
+        isInboxSessionActive = false
+        guard let sessionInfo = inboxSessionManager.endSession() else { return }
+        
+        let inAppManager = IterableAPI.inAppManager
+        let inboxSession = IterableInboxSession(id: sessionInfo.startInfo.id,
+                                                sessionStartTime: sessionInfo.startInfo.startTime,
+                                                sessionEndTime: Date(),
+                                                startTotalMessageCount: sessionInfo.startInfo.totalMessageCount,
+                                                startUnreadMessageCount: sessionInfo.startInfo.unreadMessageCount,
+                                                endTotalMessageCount: inAppManager.getInboxMessages().count,
+                                                endUnreadMessageCount: inAppManager.getUnreadInboxMessagesCount(),
+                                                impressions: sessionInfo.impressions.map { $0.toIterableInboxImpression() })
+        IterableAPI.track(inboxSession: inboxSession)
     }
     
     private func getPropertiesFromArguments(_ callArguments: Any?) -> [String: Any] {
@@ -167,7 +237,7 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
     }
     
     func signOut() {
-        IterableAPI.disableDeviceForCurrentUser()
+        // With autoPushRegistration, logoutUser disables the outgoing user's device.
         IterableAPI.logoutUser()
     }
     
