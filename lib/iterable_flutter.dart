@@ -14,6 +14,9 @@ class IterableFlutter {
 
   static IterableActionHandler? _actionHandler;
 
+  static final StreamController<void> _inboxChangesController =
+      StreamController<void>.broadcast();
+
   const IterableFlutter._();
   static IterableFlutter? _singleton;
   static IterableFlutter get instance {
@@ -128,6 +131,17 @@ class IterableFlutter {
     );
   }
 
+  Future<bool> markInboxMessageRead({required String messageId}) async {
+    final result = await _channel.invokeMethod<bool>(
+      'markInboxMessageRead',
+      {
+        'messageId': messageId,
+      },
+    );
+
+    return result ?? false;
+  }
+
   Future<bool> deleteInboxMessage({required String messageId}) async {
     final result = await _channel.invokeMethod(
       'deleteInboxMessage',
@@ -139,12 +153,36 @@ class IterableFlutter {
     return result;
   }
 
+  Future<void> startInboxSession() async {
+    await _channel.invokeMethod('startInboxSession');
+  }
+
+  Future<void> endInboxSession() async {
+    await _channel.invokeMethod('endInboxSession');
+  }
+
+  Future<void> updateVisibleInboxMessages(List<String> messageIds) async {
+    await _channel.invokeMethod(
+      'updateVisibleInboxMessages',
+      {
+        'messageIds': messageIds,
+      },
+    );
+  }
+
+  Stream<void> get inboxChanges => _inboxChangesController.stream;
+
   // ignore: use_setters_to_change_properties
   void setIterableActionHandler(IterableActionHandler handler) {
     _actionHandler = handler;
   }
 
   Future<dynamic> _nativeMethodCallHandler(MethodCall methodCall) async {
+    if (methodCall.method == 'inboxChanged') {
+      _inboxChangesController.add(null);
+      return;
+    }
+
     final arguments = methodCall.arguments as Map<dynamic, dynamic>;
     final argumentsCleaned = sanitizeArguments(arguments);
 

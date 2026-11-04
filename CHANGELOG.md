@@ -1,3 +1,11 @@
+## 0.9.0
+- feat(inbox): add `markInboxMessageRead`, which tracks an inbox open and marks the message read locally, so the read reaches Iterable without opening the message
+- feat(inbox): add `startInboxSession`, `endInboxSession` and `updateVisibleInboxMessages` to track inbox sessions and impressions. The app must end the session when it goes to the background and on logout
+- feat(inbox): add `inboxChanges` stream, fired when the native SDK inbox changes
+- fix(inbox): `showInboxMessage` completes once when display is triggered instead of on a link click, returns `false` for JSON-only messages, and uses the inbox location on Android. On iOS the SDK's public API shows it as an in-app message, so opens, clicks and deletes don't carry the inbox session id
+- fix(inbox): `deleteInboxMessage` completes with the result of the delete request, and returns `false` when there is no user
+- test: update stale `initialize`, `actionHandler` and `sanitizeMap` tests to the current payload
+
 ## 0.8.0
 - feat(iOS): support Swift Package Manager. Sources moved to `ios/iterable_flutter/Sources/iterable_flutter`, and the Objective-C registration shim was removed (`SwiftIterableFlutterPlugin` is now the plugin class). CocoaPods keeps working.
 - fix(Android build): support built-in Kotlin. The plugin no longer applies `kotlin-android`, and it targets Java 17.

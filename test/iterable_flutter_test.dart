@@ -209,6 +209,105 @@ void main() {
     assert(count == 1);
   });
 
+  group('inbox', () {
+    const messageId = 'message-1';
+
+    void mockResult(Object? value) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        calledMethod.add(methodCall);
+        return value;
+      });
+    }
+
+    test('showInboxMessage returns the native result', () async {
+      mockResult(true);
+      final shown = await IterableFlutter.instance
+          .showInboxMessage(messageId: messageId);
+      expect(shown, isTrue);
+      expect(calledMethod, <Matcher>[
+        isMethodCall('showInboxMessage', arguments: {'messageId': messageId}),
+      ]);
+    });
+
+    test('showInboxMessage returns false when not shown', () async {
+      mockResult(false);
+      final shown = await IterableFlutter.instance
+          .showInboxMessage(messageId: messageId);
+      expect(shown, isFalse);
+    });
+
+    test('markInboxMessageRead returns the native result', () async {
+      mockResult(true);
+      final marked = await IterableFlutter.instance
+          .markInboxMessageRead(messageId: messageId);
+      expect(marked, isTrue);
+      expect(calledMethod, <Matcher>[
+        isMethodCall(
+          'markInboxMessageRead',
+          arguments: {'messageId': messageId},
+        ),
+      ]);
+    });
+
+    test('markInboxMessageRead returns false when native returns null',
+        () async {
+      mockResult(null);
+      final marked = await IterableFlutter.instance
+          .markInboxMessageRead(messageId: messageId);
+      expect(marked, isFalse);
+    });
+
+    test('deleteInboxMessage returns false on failure', () async {
+      mockResult(false);
+      final deleted = await IterableFlutter.instance
+          .deleteInboxMessage(messageId: messageId);
+      expect(deleted, isFalse);
+      expect(calledMethod, <Matcher>[
+        isMethodCall('deleteInboxMessage', arguments: {'messageId': messageId}),
+      ]);
+    });
+
+    test('session methods call the native side', () async {
+      await IterableFlutter.instance.startInboxSession();
+      await IterableFlutter.instance
+          .updateVisibleInboxMessages(['message-1', 'message-2']);
+      await IterableFlutter.instance.endInboxSession();
+      expect(calledMethod, <Matcher>[
+        isMethodCall('startInboxSession', arguments: null),
+        isMethodCall(
+          'updateVisibleInboxMessages',
+          arguments: {
+            'messageIds': ['message-1', 'message-2'],
+          },
+        ),
+        isMethodCall('endInboxSession', arguments: null),
+      ]);
+    });
+
+    test('inboxChanges emits when native sends inboxChanged', () async {
+      await IterableFlutter.instance.initialize(
+        apiKey: apiKey,
+        pushIntegrationName: pushIntegrationName,
+      );
+      final events = <void>[];
+      final subscription =
+          IterableFlutter.instance.inboxChanges.listen(events.add);
+
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+        'iterable_flutter',
+        const StandardMethodCodec()
+            .encodeMethodCall(const MethodCall('inboxChanged')),
+        (ByteData? data) {},
+      );
+      await pumpEventQueue();
+
+      expect(events, hasLength(1));
+      await subscription.cancel();
+    });
+  });
+
   group('.sanitizeMap', () {
     group('when metadata comes from Android', () {
       test('should parse the itbl JSON string', () {
