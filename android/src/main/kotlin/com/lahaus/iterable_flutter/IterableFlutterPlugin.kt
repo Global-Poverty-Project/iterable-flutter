@@ -119,7 +119,8 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             }
 
             "signOut" -> {
-                IterableApi.getInstance().disablePush()
+                // With autoPushRegistration, clearing the identity disables the outgoing user's device.
+                IterableApi.getInstance().setEmail(null)
                 result.success(null)
             }
 
@@ -273,7 +274,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     ) {
         val configBuilder = IterableConfig.Builder()
             .setPushIntegrationName(pushIntegrationName)
-            .setAutoPushRegistration(false)
+            .setAutoPushRegistration(true)
 //            .setUseInMemoryStorageForInApps(true)
             .setInAppHandler {
                 IterableInAppHandler.InAppResponse.SHOW

@@ -4,6 +4,7 @@
 - feat(inbox): add `inboxChanges` stream, fired when the native SDK inbox changes
 - fix(inbox): `showInboxMessage` completes once when display is triggered instead of on a link click, returns `false` for JSON-only messages, and uses the inbox location on Android. On iOS the SDK's public API shows it as an in-app message, so opens, clicks and deletes don't carry the inbox session id
 - fix(inbox): `deleteInboxMessage` completes with the result of the delete request, and returns `false` when there is no user
+- fix(push): enable `autoPushRegistration`, so the SDK disables the outgoing user's device on logout or when the user changes and registers the new user's. `signOut` now clears the SDK identity on Android (it used to keep it, so a token refresh re-registered the logged-out user)
 - test: update stale `initialize`, `actionHandler` and `sanitizeMap` tests to the current payload
 
 ## 0.8.0

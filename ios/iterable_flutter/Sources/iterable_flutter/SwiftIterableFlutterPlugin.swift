@@ -192,7 +192,7 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
         let config = IterableConfig()
         config.pushIntegrationName = pushIntegrationName
         config.allowedProtocols = allowedProtocols
-        config.autoPushRegistration = false
+        config.autoPushRegistration = true
         config.useInMemoryStorageForInApps = true
         config.urlDelegate = self
         config.customActionDelegate = self
@@ -237,7 +237,7 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
     }
     
     func signOut() {
-        IterableAPI.disableDeviceForCurrentUser()
+        // With autoPushRegistration, logoutUser disables the outgoing user's device.
         IterableAPI.logoutUser()
     }
     
