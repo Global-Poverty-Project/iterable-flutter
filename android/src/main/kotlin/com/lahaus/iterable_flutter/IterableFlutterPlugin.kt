@@ -619,6 +619,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             }
 
             messageJson.putOpt(IterableConstants.ITERABLE_IN_APP_READ, this.isRead);
+            messageJson.putOpt(IterableConstants.ITERABLE_IN_APP_CUSTOM_PAYLOAD, this.customPayload)
 
         } catch (e: JSONException) {
 
