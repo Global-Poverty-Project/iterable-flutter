@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -280,8 +281,9 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 IterableInAppHandler.InAppResponse.SHOW
             }
             .setAllowedProtocols(allowedProtocols.toTypedArray())
-            .setUrlHandler { _, context ->
-                notifyIterableAction(context)
+            .setUrlHandler { _, actionContext ->
+                notifyIterableAction(actionContext)
+                foregroundAppForPushAction(context, actionContext.source)
                 true
             }
             .setCustomActionHandler { action, context ->
@@ -628,4 +630,18 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     }
 
     // endregion
+}
+
+internal fun foregroundAppForPushAction(context: Context?, source: IterableActionSource) {
+    if (source != IterableActionSource.PUSH || context == null) return
+    // Resolve the enabled launcher alias on every tap because the app icon can change.
+    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (error: ActivityNotFoundException) {
+        LogUtils.debug("Unable to foreground app for push: $error")
+    } catch (error: SecurityException) {
+        LogUtils.debug("Unable to foreground app for push: $error")
+    }
 }
