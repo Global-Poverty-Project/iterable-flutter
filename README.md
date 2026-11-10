@@ -84,6 +84,16 @@ Set it to `false` when your backend owns device registration. In that mode, do
 not call `registerForPush`; request OS permission through your app's permission
 flow and send the raw APNs/FCM token to your backend. Explicit `registerForPush`
 remains available for applications that manually register through the SDK.
+When automatic registration is disabled, `pushIntegrationName` may be an empty
+string: the backend supplies the provider mapping when registering the token.
+The Android service also respects this setting on token refresh. A host app
+with its own Firebase messaging service should replace
+`com.lahaus.iterable_flutter.IterableFlutterMessagingService` in its manifest
+and dispatch Iterable messages with `IterableFirebaseMessagingService.handleMessageReceived`.
+Do not forward token refresh to Iterable when the backend owns registration.
+
+With JWT authentication, native SDK logs are disabled unless `activeLogDebug`
+is explicitly enabled. Keep it disabled when handling real credentials or messages.
 
 Call `signOut()` when the app session ends. The Flutter bridge does not persist
 JWTs, but the underlying native SDK manages its own credential storage (Android

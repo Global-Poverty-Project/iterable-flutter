@@ -94,8 +94,10 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 val allowedProtocols =
                     call.argument<List<String>>("allowedProtocols") ?: emptyList()
 
-                if (apiKey.isNotEmpty() && pushIntegrationName.isNotEmpty()) {
-                    autoPushRegistration = call.argument<Boolean>("autoPushRegistration") ?: true
+                autoPushRegistration = call.argument<Boolean>("autoPushRegistration") ?: true
+                if (apiKey.isNotEmpty() && (pushIntegrationName.isNotEmpty() || !autoPushRegistration)) {
+                    context?.getSharedPreferences("iterable_flutter", Context.MODE_PRIVATE)
+                        ?.edit()?.putBoolean("autoPushRegistration", autoPushRegistration)?.apply()
                     initialize(apiKey, pushIntegrationName, activeLogDebug, allowedProtocols,
                         call.argument<Boolean>("authEnabled") ?: false)
                 }
@@ -281,7 +283,6 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
         authEnabled: Boolean
     ) {
         val configBuilder = IterableConfig.Builder()
-            .setPushIntegrationName(pushIntegrationName)
             .setAutoPushRegistration(autoPushRegistration)
 //            .setUseInMemoryStorageForInApps(true)
             .setInAppHandler {
@@ -307,6 +308,9 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 }
             }
 
+        if (pushIntegrationName.isNotEmpty()) {
+            configBuilder.setPushIntegrationName(pushIntegrationName)
+        }
         if (authEnabled) {
             configBuilder.setAuthHandler(object : IterableAuthHandler {
                 override fun onAuthTokenRequested(): String? {
@@ -345,6 +349,9 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
         }
         if (activeLogDebug) {
             configBuilder.setLogLevel(Log.DEBUG)
+        } else if (authEnabled) {
+            // Native auth failures can include credentials in their details.
+            configBuilder.setLogLevel(Log.ASSERT)
         }
         LogUtils.enabled = activeLogDebug
 

@@ -196,10 +196,11 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin, IterableAuthDe
                             authEnabled: Bool, autoPushRegistration: Bool){
         self.autoPushRegistration = autoPushRegistration
         let config = IterableConfig()
-        config.pushIntegrationName = pushIntegrationName
+        if !pushIntegrationName.isEmpty { config.pushIntegrationName = pushIntegrationName }
         config.allowedProtocols = allowedProtocols
         config.autoPushRegistration = autoPushRegistration
         if authEnabled { config.authDelegate = self }
+        if authEnabled && !LogUtils.enabled { config.logDelegate = NoneLogDelegate() }
         config.useInMemoryStorageForInApps = true
         config.urlDelegate = self
         config.customActionDelegate = self
