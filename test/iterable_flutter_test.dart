@@ -69,6 +69,8 @@ void main() {
           pushIntegrationName: pushIntegrationName,
           activeLogDebug: false,
           'allowedProtocols': ['https'],
+          'authEnabled': false,
+          'autoPushRegistration': true,
         },
       ),
     ]);

@@ -8,11 +8,20 @@ import 'package:iterable_flutter/iterable_in_app_message_preview.dart';
 typedef IterableActionHandler = void Function(
     Map<String, dynamic> openedResult);
 
+/// Supplies a fresh JWT for the SDK's current user ID or email.
+/// Return null when that user is no longer signed in. Never log the token.
+typedef IterableAuthHandler = Future<String?> Function(String userKey);
+typedef IterableAuthFailureHandler = void Function(String reason);
+
 // ignore: avoid_classes_with_only_static_members
 class IterableFlutter {
   static const MethodChannel _channel = MethodChannel('iterable_flutter');
 
   static IterableActionHandler? _actionHandler;
+  static IterableAuthHandler? _authHandler;
+  static IterableAuthFailureHandler? _authFailureHandler;
+  static String? _userKey;
+  static Object? _identity;
 
   static final StreamController<void> _inboxChangesController =
       StreamController<void>.broadcast();
@@ -29,7 +38,14 @@ class IterableFlutter {
     required String pushIntegrationName,
     bool activeLogDebug = false,
     List<String> allowedProtocols = const ['https'],
+    IterableAuthHandler? authHandler,
+    IterableAuthFailureHandler? onAuthFailure,
+    bool autoPushRegistration = true,
   }) async {
+    _authHandler = authHandler;
+    _authFailureHandler = onAuthFailure;
+    _userKey = null;
+    _identity = null;
     // Registered first: a link queued during a cold start is replayed by the
     // native SDK as soon as initialize completes.
     _channel.setMethodCallHandler(_nativeMethodCallHandler);
@@ -40,15 +56,21 @@ class IterableFlutter {
         'pushIntegrationName': pushIntegrationName,
         'activeLogDebug': activeLogDebug,
         'allowedProtocols': allowedProtocols,
+        'authEnabled': authHandler != null,
+        'autoPushRegistration': autoPushRegistration,
       },
     );
   }
 
   Future<void> setEmail(String email) async {
+    _userKey = email;
+    _identity = Object();
     await _channel.invokeMethod('setEmail', email);
   }
 
   Future<void> setUserId(String userId) async {
+    _userKey = userId;
+    _identity = Object();
     await _channel.invokeMethod('setUserId', userId);
   }
 
@@ -61,6 +83,8 @@ class IterableFlutter {
   }
 
   Future<void> signOut() async {
+    _userKey = null;
+    _identity = null;
     await _channel.invokeMethod('signOut');
   }
 
@@ -178,6 +202,26 @@ class IterableFlutter {
   }
 
   Future<dynamic> _nativeMethodCallHandler(MethodCall methodCall) async {
+    if (methodCall.method == 'authTokenRequested') {
+      final userKey = methodCall.arguments as String?;
+      final identity = _identity;
+      if (userKey == null || userKey != _userKey || identity == null) {
+        return null;
+      }
+      try {
+        final token = await _authHandler?.call(userKey);
+        // A native refresh can finish after logout or an account switch.
+        return identical(identity, _identity) ? token : null;
+      } catch (_) {
+        // Platform-channel error envelopes otherwise include exception text.
+        _authFailureHandler?.call('tokenRequestFailed');
+        return null;
+      }
+    }
+    if (methodCall.method == 'authFailure') {
+      _authFailureHandler?.call(methodCall.arguments as String);
+      return;
+    }
     if (methodCall.method == 'inboxChanged') {
       _inboxChangesController.add(null);
       return;

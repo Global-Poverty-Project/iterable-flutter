@@ -25,6 +25,9 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.regex.Pattern
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 
 /** IterableFlutterPlugin */
@@ -46,6 +49,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     // IterableAPI crashes when processing an appLink without being initialized
     // persist the appLink here and handle after Iterable has ben initialized
     private var isInitialized: Boolean = false
+    private var autoPushRegistration: Boolean = true
     private var pendingAppLinkUrl: String? = null
 
     // Hold reference to MobileInboxActivity to dismiss when handling actions
@@ -91,7 +95,9 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                     call.argument<List<String>>("allowedProtocols") ?: emptyList()
 
                 if (apiKey.isNotEmpty() && pushIntegrationName.isNotEmpty()) {
-                    initialize(apiKey, pushIntegrationName, activeLogDebug, allowedProtocols)
+                    autoPushRegistration = call.argument<Boolean>("autoPushRegistration") ?: true
+                    initialize(apiKey, pushIntegrationName, activeLogDebug, allowedProtocols,
+                        call.argument<Boolean>("authEnabled") ?: false)
                 }
                 result.success(null)
             }
@@ -99,13 +105,13 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             "setEmail" -> {
                 val userEmail = call.arguments as String
                 IterableApi.getInstance().setEmail(userEmail)
-                IterableApi.getInstance().registerForPush()
+                if (autoPushRegistration) IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
 
             "setUserId" -> {
                 IterableApi.getInstance().setUserId(call.arguments as String)
-                IterableApi.getInstance().registerForPush()
+                if (autoPushRegistration) IterableApi.getInstance().registerForPush()
                 result.success(null)
             }
 
@@ -271,11 +277,12 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
         apiKey: String,
         pushIntegrationName: String,
         activeLogDebug: Boolean,
-        allowedProtocols: List<String>
+        allowedProtocols: List<String>,
+        authEnabled: Boolean
     ) {
         val configBuilder = IterableConfig.Builder()
             .setPushIntegrationName(pushIntegrationName)
-            .setAutoPushRegistration(true)
+            .setAutoPushRegistration(autoPushRegistration)
 //            .setUseInMemoryStorageForInApps(true)
             .setInAppHandler {
                 IterableInAppHandler.InAppResponse.SHOW
@@ -300,6 +307,42 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 }
             }
 
+        if (authEnabled) {
+            configBuilder.setAuthHandler(object : IterableAuthHandler {
+                override fun onAuthTokenRequested(): String? {
+                    // Iterable calls this on its auth executor; Flutter channels use main.
+                    // Never block the UI thread if that SDK contract changes.
+                    if (Looper.myLooper() == Looper.getMainLooper()) return null
+                    val ready = CountDownLatch(1)
+                    val token = AtomicReference<String?>(null)
+                    mainHandler.post {
+                        if (context == null) {
+                            ready.countDown()
+                            return@post
+                        }
+                        val api = IterableApi.getInstance()
+                        channel.invokeMethod("authTokenRequested", api.userId ?: api.email, object : Result {
+                            override fun success(result: Any?) {
+                                token.set(result as? String)
+                                ready.countDown()
+                            }
+                            override fun error(code: String, message: String?, details: Any?) { ready.countDown() }
+                            override fun notImplemented() { ready.countDown() }
+                        })
+                    }
+                    return if (ready.await(30, TimeUnit.SECONDS)) token.get() else null
+                }
+
+                override fun onTokenRegistrationSuccessful(authToken: String) = Unit
+
+                override fun onAuthFailure(authFailure: AuthFailure) {
+                    // The failure also contains the JWT and user key; never forward them.
+                    mainHandler.post {
+                        if (context != null) channel.invokeMethod("authFailure", authFailure.failureReason.name)
+                    }
+                }
+            })
+        }
         if (activeLogDebug) {
             configBuilder.setLogLevel(Log.DEBUG)
         }
