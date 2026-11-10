@@ -58,3 +58,43 @@ class _MyAppState extends State<MyApp> {
 
 ### Example
 Check the [example/](example/) folder to see an example project using this library.
+
+### JWT-enabled mobile keys
+
+Pass an `authHandler` only when the mobile API key requires JWT authentication.
+It receives the SDK's current user ID (or email) and should ask your backend for
+a fresh token. Return `null` when that user is signed out. Never use a server API
+key or log credentials. The bridge discards a response if the identity changes
+while the request is in flight; request failures are reported without exception
+text through `onAuthFailure`.
+
+```dart
+await IterableFlutter.instance.initialize(
+  apiKey: mobileApiKey,
+  pushIntegrationName: pushIntegrationName,
+  authHandler: (userKey) => backend.requestIterableJwt(userKey),
+  onAuthFailure: (reason) => reportAuthFailureReason(reason),
+  autoPushRegistration: false,
+);
+await IterableFlutter.instance.setUserId(userId);
+```
+
+`autoPushRegistration` defaults to `true`, preserving existing applications.
+Set it to `false` when your backend owns device registration. In that mode, do
+not call `registerForPush`; request OS permission through your app's permission
+flow and send the raw APNs/FCM token to your backend. Explicit `registerForPush`
+remains available for applications that manually register through the SDK.
+When automatic registration is disabled, `pushIntegrationName` may be an empty
+string: the backend supplies the provider mapping when registering the token.
+The Android service also respects this setting on token refresh. A host app
+with its own Firebase messaging service should replace
+`com.lahaus.iterable_flutter.IterableFlutterMessagingService` in its manifest
+and dispatch Iterable messages with `IterableFirebaseMessagingService.handleMessageReceived`.
+Do not forward token refresh to Iterable when the backend owns registration.
+
+With JWT authentication, native SDK logs are disabled unless `activeLogDebug`
+is explicitly enabled. Keep it disabled when handling real credentials or messages.
+
+Call `signOut()` when the app session ends. The Flutter bridge does not persist
+JWTs, but the underlying native SDK manages its own credential storage (Android
+uses encrypted storage); this option does not make native JWT storage memory-only.
