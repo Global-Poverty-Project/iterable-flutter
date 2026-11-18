@@ -4,6 +4,7 @@ class IterableInAppMessagePreview {
   final DateTime? expiresAt;
   final IterableInboxMetadata? inboxMetadata;
   final bool? read;
+  final Map<String, dynamic>? customPayload;
 
   IterableInAppMessagePreview({
     required this.messageId,
@@ -11,6 +12,7 @@ class IterableInAppMessagePreview {
     this.expiresAt,
     this.inboxMetadata,
     this.read,
+    this.customPayload,
   });
 
   static IterableInAppMessagePreview fromJson(
@@ -26,6 +28,9 @@ class IterableInAppMessagePreview {
       inboxMetadata:
           IterableInboxMetadata.fromJson(jsonMessage['inboxMetadata']),
       read: jsonMessage['read'],
+      customPayload: jsonMessage['customPayload'] is Map
+          ? Map<String, dynamic>.from(jsonMessage['customPayload'])
+          : null,
     );
   }
 }

@@ -97,12 +97,9 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             result(IterableAPI.inAppManager.getUnreadInboxMessagesCount())
         case "getInboxMessages":
             
-            let messages = IterableAPI.inAppManager.getInboxMessages()
-            let jsonEncoder = JSONEncoder()
-            jsonEncoder.dateEncodingStrategy = .millisecondsSince1970
-            let messagesJson = messages.map { try? jsonEncoder.encode($0) }
-            let messagesString : [String] = messagesJson.map { message in
-                return message != nil ?  String(data: message! , encoding: .utf8) ?? "" : ""
+            let messagesString: [String] = IterableAPI.inAppManager.getInboxMessages().map { message in
+                guard let data = try? JSONSerialization.data(withJSONObject: message.previewJson()) else { return "" }
+                return String(data: data, encoding: .utf8) ?? ""
             }
             result(messagesString)
         case "setRead":
@@ -443,5 +440,26 @@ extension SwiftIterableFlutterPlugin: UNUserNotificationCenterDelegate {
     }
 }
 
-
-
+extension IterableInAppMessage {
+    // Same shape as the Android preview, built explicitly so customPayload stays a JSON object.
+    func previewJson() -> [String: Any] {
+        var json: [String: Any] = ["messageId": messageId, "read": read]
+        if let createdAt = createdAt {
+            json["createdAt"] = Int(createdAt.timeIntervalSince1970 * 1000)
+        }
+        if let expiresAt = expiresAt {
+            json["expiresAt"] = Int(expiresAt.timeIntervalSince1970 * 1000)
+        }
+        if let inboxMetadata = inboxMetadata {
+            var metadata: [String: Any] = [:]
+            metadata["title"] = inboxMetadata.title
+            metadata["subtitle"] = inboxMetadata.subtitle
+            metadata["icon"] = inboxMetadata.icon
+            json["inboxMetadata"] = metadata
+        }
+        if let customPayload = customPayload, JSONSerialization.isValidJSONObject(customPayload) {
+            json["customPayload"] = customPayload
+        }
+        return json
+    }
+}
