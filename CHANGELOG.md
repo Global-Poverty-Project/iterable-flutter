@@ -1,3 +1,8 @@
+## 0.10.0
+- feat(inbox): add `customPayload` to `IterableInAppMessagePreview`, so apps can read campaign data such as the message type from the SDK. On iOS the preview is now built explicitly, because the SDK's Codable sent `customPayload` as base64 data, and `createdAt`/`expiresAt` are sent as integer milliseconds
+
+## 0.9.1
+- fix(Android push): bring the backgrounded app to the foreground when a push URL is tapped. Resolve the active launcher alias to support alternate app icons while preserving existing Flutter deeplink handling without dispatching the URL twice.
 ## 0.9.0
 - feat(inbox): add `markInboxMessageRead`, which tracks an inbox open and marks the message read locally, so the read reaches Iterable without opening the message
 - feat(inbox): add `startInboxSession`, `endInboxSession` and `updateVisibleInboxMessages` to track inbox sessions and impressions. The app must end the session when it goes to the background and on logout
