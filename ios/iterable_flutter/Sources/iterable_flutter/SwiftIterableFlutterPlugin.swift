@@ -3,13 +3,14 @@ import UIKit
 import IterableSDK
 import UserNotifications
 
-public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
+public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin, IterableAuthDelegate {
     
     static var channel: FlutterMethodChannel? = nil
     
     var launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     
     private var inboxChangedObserver: NSObjectProtocol? = nil
+    private var autoPushRegistration = true
     private let inboxSessionManager = InboxSessionManager()
     // InboxSessionManager.isTracking is internal to the SDK.
     private var isInboxSessionActive = false
@@ -37,7 +38,9 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
             let activeLogDebug = args["activeLogDebug"] as? Bool
             
             LogUtils.enabled = activeLogDebug ?? false
-            initialize(apiKey, pushIntegrationName, allowedProtocols)
+            initialize(apiKey, pushIntegrationName, allowedProtocols,
+                       authEnabled: args["authEnabled"] as? Bool ?? false,
+                       autoPushRegistration: args["autoPushRegistration"] as? Bool ?? true)
             
             result(nil)
         case "setEmail":
@@ -185,11 +188,15 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
     
     
     
-    private func initialize(_ apiKey: String, _ pushIntegrationName: String, _ allowedProtocols: [String]){
+    private func initialize(_ apiKey: String, _ pushIntegrationName: String, _ allowedProtocols: [String],
+                            authEnabled: Bool, autoPushRegistration: Bool){
+        self.autoPushRegistration = autoPushRegistration
         let config = IterableConfig()
-        config.pushIntegrationName = pushIntegrationName
+        if !pushIntegrationName.isEmpty { config.pushIntegrationName = pushIntegrationName }
         config.allowedProtocols = allowedProtocols
-        config.autoPushRegistration = true
+        config.autoPushRegistration = autoPushRegistration
+        if authEnabled { config.authDelegate = self }
+        if authEnabled && !LogUtils.enabled { config.logDelegate = NoneLogDelegate() }
         config.useInMemoryStorageForInApps = true
         config.urlDelegate = self
         config.customActionDelegate = self
@@ -203,6 +210,26 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin {
         }
     }
     
+    public func onAuthTokenRequested(completion: @escaping AuthTokenRetrievalHandler) {
+        DispatchQueue.main.async {
+            guard let channel = Self.channel,
+                  let userKey = IterableAPI.userId ?? IterableAPI.email else {
+                completion(nil)
+                return
+            }
+            channel.invokeMethod("authTokenRequested", arguments: userKey) { result in
+                completion(result as? String)
+            }
+        }
+    }
+
+    public func onAuthFailure(_ authFailure: AuthFailure) {
+        // AuthFailure also contains credentials: send only its reason.
+        DispatchQueue.main.async {
+            Self.channel?.invokeMethod("authFailure", arguments: String(describing: authFailure.failureReason))
+        }
+    }
+
     private func visibleInboxRows() -> [InboxImpressionTracker.RowInfo] {
         return IterableAPI.inAppManager.getInboxMessages()
             .filter { visibleInboxMessageIds.contains($0.messageId) }
@@ -361,7 +388,10 @@ extension SwiftIterableFlutterPlugin {
     }
     
     public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        IterableAPI.register(token: deviceToken)
+        // With backend-owned registration the app sends the token to its backend.
+        if autoPushRegistration {
+            IterableAPI.register(token: deviceToken)
+        }
     }
     
     public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
