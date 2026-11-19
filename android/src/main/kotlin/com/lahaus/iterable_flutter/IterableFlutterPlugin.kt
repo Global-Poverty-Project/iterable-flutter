@@ -96,8 +96,6 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
                 autoPushRegistration = call.argument<Boolean>("autoPushRegistration") ?: true
                 if (apiKey.isNotEmpty() && (pushIntegrationName.isNotEmpty() || !autoPushRegistration)) {
-                    context?.getSharedPreferences("iterable_flutter", Context.MODE_PRIVATE)
-                        ?.edit()?.putBoolean("autoPushRegistration", autoPushRegistration)?.apply()
                     initialize(apiKey, pushIntegrationName, activeLogDebug, allowedProtocols,
                         call.argument<Boolean>("authEnabled") ?: false)
                 }
@@ -315,8 +313,6 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
             configBuilder.setAuthHandler(object : IterableAuthHandler {
                 override fun onAuthTokenRequested(): String? {
                     // Iterable calls this on its auth executor; Flutter channels use main.
-                    // Never block the UI thread if that SDK contract changes.
-                    if (Looper.myLooper() == Looper.getMainLooper()) return null
                     val ready = CountDownLatch(1)
                     val token = AtomicReference<String?>(null)
                     mainHandler.post {

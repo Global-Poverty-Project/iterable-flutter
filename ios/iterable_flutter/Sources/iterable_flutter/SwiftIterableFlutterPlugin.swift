@@ -11,7 +11,6 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin, IterableAuthDe
     
     private var inboxChangedObserver: NSObjectProtocol? = nil
     private var autoPushRegistration = true
-    private var manualPushRegistration = false
     private let inboxSessionManager = InboxSessionManager()
     // InboxSessionManager.isTracking is internal to the SDK.
     private var isInboxSessionActive = false
@@ -273,7 +272,6 @@ public class SwiftIterableFlutterPlugin: NSObject, FlutterPlugin, IterableAuthDe
                 guard self != nil else { return }
                 
                 DispatchQueue.main.async {
-                    self?.manualPushRegistration = true
                     UIApplication.shared.registerForRemoteNotifications()
                 }
             }
@@ -390,15 +388,13 @@ extension SwiftIterableFlutterPlugin {
     }
     
     public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        // OS registration may come from another provider (for example FCM).
-        if autoPushRegistration || manualPushRegistration {
+        // With backend-owned registration the app sends the token to its backend.
+        if autoPushRegistration {
             IterableAPI.register(token: deviceToken)
         }
-        manualPushRegistration = false
     }
     
     public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        manualPushRegistration = false
         LogUtils.debug(message: "didFailToRegisterForRemoteNotificationsWithError \(error)")
     }
     
