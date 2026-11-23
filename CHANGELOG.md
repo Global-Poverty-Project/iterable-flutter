@@ -1,6 +1,6 @@
 ## 0.11.0
 - feat(auth): support JWT-enabled mobile API keys. `initialize` takes an optional `authHandler`, which receives the SDK's current user ID or email and returns a fresh JWT from the app's backend, and `onAuthFailure`, which receives only the failure reason. A JWT that arrives after the identity changed is discarded, and native SDK logs are off in JWT mode unless `activeLogDebug` is on
-- feat(push): add `autoPushRegistration` to `initialize` (default `true`, unchanged behavior). With `false`, the SDK never registers device tokens and `pushIntegrationName` may be empty, for apps whose backend owns device registration
+- feat(push): add `autoPushRegistration` to `initialize` (default `true`, unchanged behavior). With `false`, the plugin never registers device tokens and `pushIntegrationName` may be empty, for apps whose backend owns device registration. On Android the SDK's Firebase messaging service still registers refreshed tokens, so the app replaces it with its own service (see README). The `onAuthFailure` reason is an opaque, platform-specific string
 
 ## 0.10.0
 - feat(inbox): add `customPayload` to `IterableInAppMessagePreview`, so apps can read campaign data such as the message type from the SDK. On iOS the preview is now built explicitly, because the SDK's Codable sent `customPayload` as base64 data, and `createdAt`/`expiresAt` are sent as integer milliseconds
