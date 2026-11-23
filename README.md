@@ -65,8 +65,13 @@ Pass an `authHandler` only when the mobile API key requires JWT authentication.
 It receives the SDK's current user ID (or email) and should ask your backend for
 a fresh token. Return `null` when that user is signed out. Never use a server API
 key or log credentials. The bridge discards a response if the identity changes
-while the request is in flight; request failures are reported without exception
-text through `onAuthFailure`.
+while the request is in flight. When `authHandler` throws, the bridge returns no
+token and the native SDK reports it through `onAuthFailure` with its own reason,
+without the exception text.
+
+Call `setUserId` (or `setEmail`) right after `initialize` on every launch, not
+only at sign-in. The native SDK restores the stored identity and may request a
+token before Dart knows it; those requests get no token until you do.
 
 ```dart
 await IterableFlutter.instance.initialize(

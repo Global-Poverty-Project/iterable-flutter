@@ -78,6 +78,6 @@ void main() {
     );
     await sdk.setUserId('user-a');
     expect(await nativeCall('authTokenRequested', 'user-a'), isNull);
-    expect(failures, ['tokenRequestFailed']);
+    expect(failures, isEmpty);
   });
 }
