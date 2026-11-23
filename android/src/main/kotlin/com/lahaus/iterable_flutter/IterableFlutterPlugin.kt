@@ -64,6 +64,49 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
     private val inboxSessionManager = InboxSessionManager()
     private var visibleInboxMessageIds = emptyList<String>()
 
+    companion object {
+        // IterableApi creates its auth manager once per process with the first handler it gets,
+        // and a recreated FlutterEngine brings a new plugin instance. A single handler that
+        // forwards to the channel of the engine that last initialized auth keeps working.
+        @Volatile
+        private var authChannel: MethodChannel? = null
+        private val authMainHandler = Handler(Looper.getMainLooper())
+
+        private val authHandler = object : IterableAuthHandler {
+            override fun onAuthTokenRequested(): String? {
+                // Iterable calls this on its auth executor; Flutter channels use main.
+                val ready = CountDownLatch(1)
+                val token = AtomicReference<String?>(null)
+                authMainHandler.post {
+                    val channel = authChannel
+                    if (channel == null) {
+                        ready.countDown()
+                        return@post
+                    }
+                    val api = IterableApi.getInstance()
+                    channel.invokeMethod("authTokenRequested", api.userId ?: api.email, object : Result {
+                        override fun success(result: Any?) {
+                            token.set(result as? String)
+                            ready.countDown()
+                        }
+                        override fun error(code: String, message: String?, details: Any?) { ready.countDown() }
+                        override fun notImplemented() { ready.countDown() }
+                    })
+                }
+                return if (ready.await(30, TimeUnit.SECONDS)) token.get() else null
+            }
+
+            override fun onTokenRegistrationSuccessful(authToken: String) = Unit
+
+            override fun onAuthFailure(authFailure: AuthFailure) {
+                // The failure also contains the JWT and user key; never forward them.
+                authMainHandler.post {
+                    authChannel?.invokeMethod("authFailure", authFailure.failureReason.name)
+                }
+            }
+        }
+    }
+
     // region FlutterPlugin
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         context = flutterPluginBinding.applicationContext
@@ -75,6 +118,7 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        if (authChannel === channel) authChannel = null
         observedInAppManager?.removeListener(inboxListener)
         observedInAppManager = null
         activityPluginBinding = null
@@ -94,8 +138,9 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
                 val allowedProtocols =
                     call.argument<List<String>>("allowedProtocols") ?: emptyList()
 
-                autoPushRegistration = call.argument<Boolean>("autoPushRegistration") ?: true
-                if (apiKey.isNotEmpty() && (pushIntegrationName.isNotEmpty() || !autoPushRegistration)) {
+                val autoPush = call.argument<Boolean>("autoPushRegistration") ?: true
+                if (apiKey.isNotEmpty() && (pushIntegrationName.isNotEmpty() || !autoPush)) {
+                    autoPushRegistration = autoPush
                     initialize(apiKey, pushIntegrationName, activeLogDebug, allowedProtocols,
                         call.argument<Boolean>("authEnabled") ?: false)
                 }
@@ -309,39 +354,9 @@ class IterableFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, N
         if (pushIntegrationName.isNotEmpty()) {
             configBuilder.setPushIntegrationName(pushIntegrationName)
         }
+        authChannel = if (authEnabled) channel else null
         if (authEnabled) {
-            configBuilder.setAuthHandler(object : IterableAuthHandler {
-                override fun onAuthTokenRequested(): String? {
-                    // Iterable calls this on its auth executor; Flutter channels use main.
-                    val ready = CountDownLatch(1)
-                    val token = AtomicReference<String?>(null)
-                    mainHandler.post {
-                        if (context == null) {
-                            ready.countDown()
-                            return@post
-                        }
-                        val api = IterableApi.getInstance()
-                        channel.invokeMethod("authTokenRequested", api.userId ?: api.email, object : Result {
-                            override fun success(result: Any?) {
-                                token.set(result as? String)
-                                ready.countDown()
-                            }
-                            override fun error(code: String, message: String?, details: Any?) { ready.countDown() }
-                            override fun notImplemented() { ready.countDown() }
-                        })
-                    }
-                    return if (ready.await(30, TimeUnit.SECONDS)) token.get() else null
-                }
-
-                override fun onTokenRegistrationSuccessful(authToken: String) = Unit
-
-                override fun onAuthFailure(authFailure: AuthFailure) {
-                    // The failure also contains the JWT and user key; never forward them.
-                    mainHandler.post {
-                        if (context != null) channel.invokeMethod("authFailure", authFailure.failureReason.name)
-                    }
-                }
-            })
+            configBuilder.setAuthHandler(authHandler)
         }
         if (activeLogDebug) {
             configBuilder.setLogLevel(Log.DEBUG)

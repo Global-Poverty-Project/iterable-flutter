@@ -33,6 +33,13 @@ class IterableFlutter {
     return _singleton!;
   }
 
+  /// Initializes the native SDK.
+  ///
+  /// With [authHandler], call [setEmail] or [setUserId] right after this on
+  /// every launch: the native SDK restores the stored identity and may request
+  /// a JWT before Dart knows it, and those requests get no token.
+  /// [onAuthFailure] receives only the native SDK's failure reason, including
+  /// when [authHandler] throws (the SDK then reports a null token).
   Future<void> initialize({
     required String apiKey,
     required String pushIntegrationName,
@@ -214,7 +221,7 @@ class IterableFlutter {
         return identical(identity, _identity) ? token : null;
       } catch (_) {
         // Platform-channel error envelopes otherwise include exception text.
-        _authFailureHandler?.call('tokenRequestFailed');
+        // The SDK reports the null token through onAuthFailure.
         return null;
       }
     }

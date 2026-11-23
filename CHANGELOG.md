@@ -1,3 +1,10 @@
+## 0.11.1
+- fix(Android auth): keep JWT requests working after the FlutterEngine is recreated in the same process (activity destroyed, process alive). The SDK keeps the auth handler of the first `initialize`, so the plugin now passes one process-wide handler that forwards to the engine that last initialized auth, instead of one tied to the first plugin instance's channel
+- fix(auth): when `authHandler` throws, `onAuthFailure` is no longer called with `tokenRequestFailed`; the native SDK already reports the null token
+- fix(Android): an `initialize` call ignored for a missing API key or push integration no longer changes `autoPushRegistration`
+- docs(auth): with `authHandler`, call `setUserId`/`setEmail` right after `initialize` on every launch
+- chore(iOS): podspec version matches the package version
+
 ## 0.11.0
 - feat(auth): support JWT-enabled mobile API keys. `initialize` takes an optional `authHandler`, which receives the SDK's current user ID or email and returns a fresh JWT from the app's backend, and `onAuthFailure`, which receives only the failure reason. A JWT that arrives after the identity changed is discarded, and native SDK logs are off in JWT mode unless `activeLogDebug` is on
 - feat(push): add `autoPushRegistration` to `initialize` (default `true`, unchanged behavior). With `false`, the plugin never registers device tokens and `pushIntegrationName` may be empty, for apps whose backend owns device registration. On Android the SDK's Firebase messaging service still registers refreshed tokens, so the app replaces it with its own service (see README). The `onAuthFailure` reason is an opaque, platform-specific string
